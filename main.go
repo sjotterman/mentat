@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +14,7 @@ type item struct {
 	title, desc string
 }
 
+const filePath = "/Users/samuel.otterman/Dropbox/notes"
 
 type updatedListMsg struct{ items []list.Item }
 
@@ -58,13 +60,21 @@ func main() {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return GetUpdatedFiles
 }
 
 func GetUpdatedFiles() tea.Msg {
-	items := []list.Item{
-		item{title: "README.md", desc: "Updated!"},
-		item{title: "baz.md", desc: "Fourth file"},
+	files, err := os.ReadDir(filePath)
+	if err != nil {
+		log.Println(err)
+	}
+	items := []list.Item{}
+	for _, file := range files {
+		// not a hidden file
+		if !strings.HasPrefix(file.Name(), ".") {
+			var newItem item = item{title: file.Name()}
+			items = append(items, newItem)
+		}
 	}
 	var listMsg updatedListMsg
 	listMsg.items = items
@@ -81,9 +91,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, nil
-		}
-		if msg.String() == "x" {
-			return m, GetUpdatedFiles
 		}
 		if msg.String() == "enter" {
 			log.Print("Enter pressed!")
