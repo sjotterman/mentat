@@ -9,13 +9,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type errMsg error
-
 type item struct {
 	title, desc string
 }
 
-var docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+type updatedListMsg struct{ items []list.Item }
+
+type errMsg error
+
+var docStyle = lipgloss.NewStyle().Margin(1, 0, 0, 0)
 
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
@@ -32,6 +35,7 @@ func initialModel() model {
 		item{title: "foo.md", desc: "First file"},
 		item{title: "bar.md", desc: "Second file"},
 		item{title: "foobar.md", desc: "Third file"},
+		item{title: "baz.md", desc: "Fourth file"},
 	}
 	return model{list: list.NewModel(items, list.NewDefaultDelegate(), 0, 0)}
 }
@@ -57,10 +61,42 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func GetUpdatedFiles() tea.Msg {
+	items := []list.Item{
+		item{title: "README.md", desc: "Updated!"},
+		item{title: "baz.md", desc: "Fourth file"},
+	}
+	var listMsg updatedListMsg
+	listMsg.items = items
+	return updatedListMsg(listMsg)
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case updatedListMsg:
+		m.list.SetItems(msg.items)
+		return m, nil
+
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
+			return m, nil
+		}
+		if msg.String() == "x" {
+			return m, GetUpdatedFiles
+		}
+		if msg.String() == "enter" {
+			log.Print("Enter pressed!")
+			count := len(m.list.VisibleItems())
+			if count == 0 {
+				log.Print("Empty filter, should create item")
+				return m, nil
+			}
+			log.Print("Nonzero items")
+			item := m.list.SelectedItem()
+			statusMessage := "Selected: " + string(item.FilterValue())
+
+			m.list.NewStatusMessage(statusMessage)
 			return m, nil
 		}
 	case tea.WindowSizeMsg:
@@ -75,6 +111,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.err != nil {
+		log.Fatal(m.err)
 		return m.err.Error()
 	}
 	return docStyle.Render(m.list.View())
