@@ -1,8 +1,12 @@
 package main
 
 import (
+	"errors"
+	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -63,8 +67,11 @@ func (m model) Init() tea.Cmd {
 	return GetUpdatedFiles
 }
 
-func GetUpdatedFiles() tea.Msg {
-	files, err := os.ReadDir(filePath)
+func getMarkdownNames(filepath string) []list.Item {
+	files, err := ioutil.ReadDir(filePath)
+	sort.Slice(files, func(i, j int) bool {
+		return files[j].ModTime().Before(files[i].ModTime())
+	})
 	if err != nil {
 		log.Println(err)
 	}
@@ -72,13 +79,38 @@ func GetUpdatedFiles() tea.Msg {
 	for _, file := range files {
 		// not a hidden file
 		if !strings.HasPrefix(file.Name(), ".") {
-			var newItem item = item{title: file.Name()}
-			items = append(items, newItem)
+			if strings.HasSuffix(file.Name(), ".md") {
+				var newItem item = item{title: file.Name()}
+				items = append(items, newItem)
+			}
 		}
 	}
+	return items
+}
+
+func GetUpdatedFiles() tea.Msg {
 	var listMsg updatedListMsg
-	listMsg.items = items
+	listMsg.items = getMarkdownNames(filePath)
 	return updatedListMsg(listMsg)
+}
+
+func OpenInEditor(filename string) tea.Cmd {
+
+	return func() tea.Msg {
+		editorPath := os.Getenv("EDITOR")
+		if editorPath == "" {
+			return errors.New("$EDITOR not set")
+		}
+		editorCmd := exec.Command(editorPath, filePath+"/"+filename)
+		editorCmd.Stdin = os.Stdin
+		editorCmd.Stdout = os.Stdout
+		editorCmd.Stderr = os.Stderr
+
+		err := editorCmd.Start()
+		err = editorCmd.Wait()
+		return err
+	}
+
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -101,10 +133,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			log.Print("Nonzero items")
 			item := m.list.SelectedItem()
+			fileName := item.FilterValue()
 			statusMessage := "Selected: " + string(item.FilterValue())
 
 			m.list.NewStatusMessage(statusMessage)
-			return m, nil
+			return m, OpenInEditor(fileName)
 		}
 	case tea.WindowSizeMsg:
 		top, right, bottom, left := docStyle.GetMargin()
