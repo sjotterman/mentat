@@ -18,9 +18,16 @@ type item struct {
 	title, desc string
 }
 
+// TODO: remove hardcoded path
 const filePath = "/Users/samuel.otterman/Dropbox/notes"
 
+// TODO: find another way to get the term width?
+// tea.WindowSizeMsg ?
+
 type updatedListMsg struct{ items []list.Item }
+
+// TODO: determine if this is needed
+type doneWithEditorMsg struct{}
 
 type errMsg error
 
@@ -29,6 +36,10 @@ var docStyle = lipgloss.NewStyle().Margin(1, 0, 0, 0)
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
+
+// TODO: find a way to return just the title, so I can filter
+// on title.desc
+// func (i item) FilterValue() string { return i.title + i.desc }
 
 type model struct {
 	quitting bool
@@ -56,14 +67,14 @@ func main() {
 	}
 
 	// Initialize
-	p := tea.NewProgram(initialModel())
-	p.EnterAltScreen()
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if err := p.Start(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func (m model) Init() tea.Cmd {
+	log.Println("INIT")
 	return GetUpdatedFiles
 }
 
@@ -107,14 +118,22 @@ func OpenInEditor(filename string) tea.Cmd {
 		editorCmd.Stderr = os.Stderr
 
 		err := editorCmd.Start()
+		log.Println("start err:")
+		log.Println(err)
 		err = editorCmd.Wait()
-		return err
+		log.Println("wait err:")
+		log.Println(err)
+		return doneWithEditorMsg{}
 	}
 
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case doneWithEditorMsg:
+		log.Println("doneWithEditorMsg")
+		return m, nil
 
 	case updatedListMsg:
 		m.list.SetItems(msg.items)
@@ -124,8 +143,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, nil
 		}
+		// TODO: periodically update list of files
 		if msg.String() == "enter" {
-			log.Print("Enter pressed!")
 			count := len(m.list.VisibleItems())
 			if count == 0 {
 				log.Print("Empty filter, should create item")
