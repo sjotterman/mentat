@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -21,6 +22,11 @@ type item struct {
 
 type editorFinishedMsg struct{ err error }
 
+type previewFileContentsMsg struct {
+	title    string
+	contents string
+}
+
 // TODO: find another way to get the term width?
 // tea.WindowSizeMsg ?
 
@@ -31,7 +37,7 @@ type doneWithEditorMsg struct{}
 
 type errMsg error
 
-var docStyle = lipgloss.NewStyle().Margin(1, 0, 0, 0)
+var docStyle = lipgloss.NewStyle().Margin(2, 0, 2, 0)
 
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
@@ -42,28 +48,30 @@ func (i item) FilterValue() string { return i.title }
 // func (i item) FilterValue() string { return i.title + i.desc }
 
 type model struct {
-	quitting bool
-	list     list.Model
-	err      error
+	quitting      bool
+	list          list.Model
+	selectedTitle string
+	filePreview   string
+	err           error
 }
 
+// TODO: figure out why this is needed
+// If I don't have this, it does't have a title to look at on start up
 func initialModel() model {
 	items := []list.Item{
-		item{title: "foo.md", desc: "First file"},
-		item{title: "bar.md", desc: "Second file"},
-		item{title: "foobar.md", desc: "Third file"},
-		item{title: "baz.md", desc: "Fourth file"},
+		item{title: "", desc: ""},
 	}
 	return model{list: list.NewModel(items, list.NewDefaultDelegate(), 0, 0)}
 }
 
 func main() {
-	// Log to a file. To use, export BUBBLETEA_LOG
-	logfilePath := os.Getenv("BUBBLETEA_LOG")
-	if logfilePath != "" {
-		if _, err := tea.LogToFile(logfilePath, "simple"); err != nil {
-			log.Fatal(err)
+	if len(os.Getenv("MENTAT_DEBUG")) > 0 {
+		f, err := tea.LogToFile("debug.log", "debug")
+		if err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
 		}
+		defer f.Close()
 	}
 
 	viper.SetConfigName(".mentat") // name of config file (without extension)
@@ -117,17 +125,6 @@ func GetUpdatedFiles() tea.Msg {
 	return updatedListMsg(listMsg)
 }
 
-func openEditor() tea.Cmd {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vim"
-	}
-	c := exec.Command(editor)
-	return tea.ExecProcess(c, func(err error) tea.Msg {
-		return editorFinishedMsg{err}
-	})
-}
-
 func OpenInEditor(filename string) tea.Cmd {
 	editorPath := os.Getenv("EDITOR")
 	if editorPath == "" {
@@ -142,8 +139,54 @@ func OpenInEditor(filename string) tea.Cmd {
 
 }
 
+// TODO refactor
+func GetFilePreview(filename string) tea.Cmd {
+	if filename == "" {
+		return func() tea.Msg {
+			return previewFileContentsMsg{title: "No file selected", contents: ""}
+		}
+	}
+	lines := []string{}
+	filePath := viper.GetString("filePath")
+	fileName := filePath + filename
+	file, err := os.Open(fileName)
+	defer file.Close()
+	lineCounter := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		// only want to preview 20 lines
+		if lineCounter > 20 {
+			break
+		}
+		line := scanner.Text()
+		lines = append(lines, line)
+		lineCounter++
+	}
+	contents := strings.Join(lines, "\n")
+
+	if err != nil {
+		return func() tea.Msg {
+			return previewFileContentsMsg{title: fileName, contents: "Error reading file"}
+		}
+	}
+	// TODO: only show first N lines, so it doesn't break on large files
+	return func() tea.Msg {
+		return previewFileContentsMsg{title: fileName, contents: contents}
+	}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
+
+	case previewFileContentsMsg:
+		m.filePreview = msg.contents
+		m.selectedTitle = msg.title
+		return m, nil
 
 	case doneWithEditorMsg:
 		log.Println("doneWithEditorMsg")
@@ -174,12 +217,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		top, right, bottom, left := docStyle.GetMargin()
-		m.list.SetSize(msg.Width-left-right, msg.Height-top-bottom)
+		m.list.SetSize(msg.Width-left-right, msg.Height-top-bottom-4)
 	}
 
-	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+	item := m.list.SelectedItem()
+	fileName := item.FilterValue()
+	cmd = GetFilePreview(fileName)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
@@ -190,5 +237,20 @@ func (m model) View() string {
 	filePath := viper.GetString("filePath")
 	displayString := filePath + "\n"
 	displayString += m.list.View()
-	return docStyle.Render(displayString)
+	// TODO: handle long filenames without breaking the view
+	var listStyle = lipgloss.NewStyle().Width(50).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("63"))
+
+		// TODO: styling for preview
+	var previewStyle = lipgloss.NewStyle().Width(80).Height(40).Padding(1, 1).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("43"))
+
+		// TODO: styling for title
+	previewString := previewStyle.Render(m.selectedTitle + "\n" + m.filePreview)
+	listString := listStyle.Render(displayString)
+	allString := lipgloss.JoinHorizontal(lipgloss.Top, listString, previewString)
+
+	return docStyle.Render(allString)
 }
