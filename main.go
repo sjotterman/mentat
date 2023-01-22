@@ -18,6 +18,7 @@ type item struct {
 }
 
 type editorFinishedMsg struct{ err error }
+
 // TODO: remove hardcoded path
 const filePath = "/Users/samuel.otterman/Dropbox/notes"
 
@@ -174,5 +175,7 @@ func (m model) View() string {
 		log.Fatal(m.err)
 		return m.err.Error()
 	}
-	return docStyle.Render(m.list.View())
+	displayString := filePath + "\n"
+	displayString += m.list.View()
+	return docStyle.Render(displayString)
 }
