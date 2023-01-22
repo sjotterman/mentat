@@ -223,9 +223,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
 	item := m.list.SelectedItem()
-	fileName := item.FilterValue()
-	cmd = GetFilePreview(fileName)
-	cmds = append(cmds, cmd)
+	if item != nil {
+		fileName := item.FilterValue()
+		cmd = GetFilePreview(fileName)
+		cmds = append(cmds, cmd)
+	}
 	return m, tea.Batch(cmds...)
 }
 
