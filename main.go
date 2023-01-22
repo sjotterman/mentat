@@ -92,7 +92,6 @@ func main() {
 }
 
 func (m model) Init() tea.Cmd {
-	log.Println("INIT")
 	return GetUpdatedFiles
 }
 
@@ -155,7 +154,7 @@ func GetFilePreview(filename string) tea.Cmd {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		// only want to preview 20 lines
-		if lineCounter > 20 {
+		if lineCounter > 10 {
 			break
 		}
 		line := scanner.Text()
