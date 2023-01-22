@@ -242,8 +242,10 @@ func (m model) View() string {
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("63"))
 
-		// TODO: styling for preview
-	var previewStyle = lipgloss.NewStyle().Width(80).Height(40).Padding(1, 1).
+	listHeight := listStyle.GetHeight()
+
+	// TODO: styling for preview
+	var previewStyle = lipgloss.NewStyle().Width(80).Height(listHeight).Padding(1, 1).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("43"))
 
