@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/viper"
 )
 
 type item struct {
@@ -18,9 +20,6 @@ type item struct {
 }
 
 type editorFinishedMsg struct{ err error }
-
-// TODO: remove hardcoded path
-const filePath = "/Users/samuel.otterman/Dropbox/notes"
 
 // TODO: find another way to get the term width?
 // tea.WindowSizeMsg ?
@@ -67,6 +66,16 @@ func main() {
 		}
 	}
 
+	viper.SetConfigName(".mentat") // name of config file (without extension)
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME")
+	viper.SetDefault("filePath", "~/notes")
+
+	viper.ReadInConfig()
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
 	// Initialize
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if err := p.Start(); err != nil {
@@ -79,7 +88,8 @@ func (m model) Init() tea.Cmd {
 	return GetUpdatedFiles
 }
 
-func getMarkdownNames(filepath string) []list.Item {
+func getMarkdownNames() []list.Item {
+	filePath := viper.GetString("filePath")
 	files, err := ioutil.ReadDir(filePath)
 	sort.Slice(files, func(i, j int) bool {
 		return files[j].ModTime().Before(files[i].ModTime())
@@ -102,7 +112,8 @@ func getMarkdownNames(filepath string) []list.Item {
 
 func GetUpdatedFiles() tea.Msg {
 	var listMsg updatedListMsg
-	listMsg.items = getMarkdownNames(filePath)
+	viper.SetDefault("filePath", "~/notes")
+	listMsg.items = getMarkdownNames()
 	return updatedListMsg(listMsg)
 }
 
@@ -122,6 +133,7 @@ func OpenInEditor(filename string) tea.Cmd {
 	if editorPath == "" {
 		editorPath = "vim"
 	}
+	filePath := viper.GetString("filePath")
 	editorCmd := exec.Command(editorPath, filePath+"/"+filename)
 
 	return tea.ExecProcess(editorCmd, func(err error) tea.Msg {
@@ -175,6 +187,7 @@ func (m model) View() string {
 		log.Fatal(m.err)
 		return m.err.Error()
 	}
+	filePath := viper.GetString("filePath")
 	displayString := filePath + "\n"
 	displayString += m.list.View()
 	return docStyle.Render(displayString)
