@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,6 +17,7 @@ type item struct {
 	title, desc string
 }
 
+type editorFinishedMsg struct{ err error }
 // TODO: remove hardcoded path
 const filePath = "/Users/samuel.otterman/Dropbox/notes"
 
@@ -105,26 +105,27 @@ func GetUpdatedFiles() tea.Msg {
 	return updatedListMsg(listMsg)
 }
 
-func OpenInEditor(filename string) tea.Cmd {
-
-	return func() tea.Msg {
-		editorPath := os.Getenv("EDITOR")
-		if editorPath == "" {
-			return errors.New("$EDITOR not set")
-		}
-		editorCmd := exec.Command(editorPath, filePath+"/"+filename)
-		editorCmd.Stdin = os.Stdin
-		editorCmd.Stdout = os.Stdout
-		editorCmd.Stderr = os.Stderr
-
-		err := editorCmd.Start()
-		log.Println("start err:")
-		log.Println(err)
-		err = editorCmd.Wait()
-		log.Println("wait err:")
-		log.Println(err)
-		return doneWithEditorMsg{}
+func openEditor() tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
 	}
+	c := exec.Command(editor)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return editorFinishedMsg{err}
+	})
+}
+
+func OpenInEditor(filename string) tea.Cmd {
+	editorPath := os.Getenv("EDITOR")
+	if editorPath == "" {
+		editorPath = "vim"
+	}
+	editorCmd := exec.Command(editorPath, filePath+"/"+filename)
+
+	return tea.ExecProcess(editorCmd, func(err error) tea.Msg {
+		return editorFinishedMsg{err}
+	})
 
 }
 
