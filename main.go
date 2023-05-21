@@ -37,7 +37,7 @@ type doneWithEditorMsg struct{}
 
 type errMsg error
 
-var docStyle = lipgloss.NewStyle().Margin(2, 0, 2, 0)
+var docStyle = lipgloss.NewStyle()
 
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
@@ -215,8 +215,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, OpenInEditor(fileName)
 		}
 	case tea.WindowSizeMsg:
-		top, right, bottom, left := docStyle.GetMargin()
-		m.list.SetSize(msg.Width-left-right, msg.Height-top-bottom-4)
+		v, _ := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width/2, msg.Height-v-3)
 	}
 
 	m.list, cmd = m.list.Update(msg)
@@ -235,18 +235,18 @@ func (m model) View() string {
 		log.Fatal(m.err)
 		return m.err.Error()
 	}
-	filePath := viper.GetString("filePath")
-	displayString := filePath + "\n"
-	displayString += m.list.View()
+	displayString := m.list.View()
 	// TODO: handle long filenames without breaking the view
-	var listStyle = lipgloss.NewStyle().Width(50).
+	var listStyle = lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("63"))
 
-	listHeight := listStyle.GetHeight()
+	_, h := docStyle.GetFrameSize()
+	previewHeight := m.list.Height()
+	previewWidth := h - m.list.Width()
 
 	// TODO: styling for preview
-	var previewStyle = lipgloss.NewStyle().Width(80).Height(listHeight).Padding(1, 1).
+	var previewStyle = lipgloss.NewStyle().Width(previewWidth).Height(previewHeight).Padding(1, 1).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("43"))
 
