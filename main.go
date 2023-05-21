@@ -1,11 +1,11 @@
+// Package main is the entry point for the Mentat application.
+// Mentat is a note taking application that uses markdown files as the backend.
 package main
 
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -37,7 +37,7 @@ type updatedListMsg struct{ items []list.Item }
 // TODO: determine if this is needed
 type doneWithEditorMsg struct{}
 
-type errMsg error
+// type errMsg error
 
 var docStyle = lipgloss.NewStyle()
 
@@ -50,7 +50,6 @@ func (i item) FilterValue() string { return i.title }
 // func (i item) FilterValue() string { return i.title + i.desc }
 
 type model struct {
-	quitting      bool
 	list          list.Model
 	selectedTitle string
 	filePreview   string
@@ -81,27 +80,34 @@ func main() {
 	viper.AddConfigPath("$HOME")
 	viper.SetDefault("filePath", "~/notes")
 
-	viper.ReadInConfig()
-	err := viper.ReadInConfig() // Find and read the config file
-	if err != nil {             // Handle errors reading the config file
+	err := viper.ReadInConfig()
+	if err != nil { // Handle errors reading the config file
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
 	// Initialize
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-	if err := p.Start(); err != nil {
+	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return GetUpdatedFiles
+	return getUpdatedFiles
 }
 
 func getMarkdownNames() []list.Item {
 	filePath := viper.GetString("filePath")
-	files, err := ioutil.ReadDir(filePath)
+	files, err := os.ReadDir(filePath)
 	sort.Slice(files, func(i, j int) bool {
-		return files[j].ModTime().Before(files[i].ModTime())
+		infoI, err := files[i].Info()
+		if err != nil {
+			log.Fatal(err)
+		}
+		infoJ, err := files[j].Info()
+		if err != nil {
+			log.Fatal(err)
+		}
+		return infoJ.ModTime().Before(infoI.ModTime())
 	})
 	if err != nil {
 		log.Println(err)
@@ -111,7 +117,7 @@ func getMarkdownNames() []list.Item {
 		// not a hidden file
 		if !strings.HasPrefix(file.Name(), ".") {
 			if strings.HasSuffix(file.Name(), ".md") {
-				var newItem item = item{title: file.Name()}
+				newItem := item{title: file.Name()}
 				items = append(items, newItem)
 			}
 		}
@@ -119,14 +125,14 @@ func getMarkdownNames() []list.Item {
 	return items
 }
 
-func GetUpdatedFiles() tea.Msg {
+func getUpdatedFiles() tea.Msg {
 	var listMsg updatedListMsg
 	viper.SetDefault("filePath", "~/notes")
 	listMsg.items = getMarkdownNames()
 	return updatedListMsg(listMsg)
 }
 
-func OpenInEditor(filename string) tea.Cmd {
+func openInEditor(filename string) tea.Cmd {
 	editorPath := os.Getenv("EDITOR")
 	if editorPath == "" {
 		editorPath = "vim"
@@ -140,8 +146,8 @@ func OpenInEditor(filename string) tea.Cmd {
 
 }
 
-// TODO refactor
-func GetFilePreview(filename string) tea.Cmd {
+// getFilePreview() gets a preview of the file contents of the current file selected in the list
+func getFilePreview(filename string) tea.Cmd {
 	if filename == "" {
 		return func() tea.Msg {
 			return previewFileContentsMsg{title: "No file selected", contents: ""}
@@ -151,6 +157,9 @@ func GetFilePreview(filename string) tea.Cmd {
 	filePath := viper.GetString("filePath")
 	fileName := filePath + filename
 	file, err := os.Open(fileName)
+	if err != nil {
+		fmt.Println("fatal:", err)
+	}
 	defer file.Close()
 	lineCounter := 0
 	scanner := bufio.NewScanner(file)
@@ -176,6 +185,7 @@ func GetFilePreview(filename string) tea.Cmd {
 	}
 }
 
+// TODO: handle pressing space when searching? doesn't seem to to work
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -214,7 +224,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusMessage := "Selected: " + string(item.FilterValue())
 
 			m.list.NewStatusMessage(statusMessage)
-			return m, OpenInEditor(fileName)
+			return m, openInEditor(fileName)
 		}
 	case tea.WindowSizeMsg:
 		w, h, err := term.GetSize(int(os.Stdout.Fd()))
@@ -222,7 +232,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			panic(err)
 		}
 		docStyle.Width(w).Height(h)
-		m.list.SetSize(int(math.Floor(float64(w/3))), h-4)
+		m.list.SetSize(int(float64(w/3)), h-4)
 	}
 
 	m.list, cmd = m.list.Update(msg)
@@ -230,7 +240,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	item := m.list.SelectedItem()
 	if item != nil {
 		fileName := item.FilterValue()
-		cmd = GetFilePreview(fileName)
+		cmd = getFilePreview(fileName)
 		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)
@@ -252,7 +262,7 @@ func (m model) View() string {
 		panic(err)
 	}
 	previewHeight := m.list.Height()
-	previewWidth := math.Ceil(float64(w * 2 / 3))
+	previewWidth := float64(w * 2 / 3)
 
 	// TODO: styling for preview
 	var previewStyle = lipgloss.NewStyle().Width(int(previewWidth)).Height(previewHeight).
