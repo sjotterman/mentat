@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 type item struct {
@@ -215,8 +217,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, OpenInEditor(fileName)
 		}
 	case tea.WindowSizeMsg:
-		v, _ := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width/2, msg.Height-v-3)
+		w, h, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil {
+			panic(err)
+		}
+		docStyle.Width(w).Height(h)
+		m.list.SetSize(int(math.Floor(float64(w/3))), h-4)
 	}
 
 	m.list, cmd = m.list.Update(msg)
@@ -241,19 +247,22 @@ func (m model) View() string {
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("63"))
 
-	_, h := docStyle.GetFrameSize()
+	w, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		panic(err)
+	}
 	previewHeight := m.list.Height()
-	previewWidth := h - m.list.Width()
+	previewWidth := math.Ceil(float64(w * 2 / 3))
 
 	// TODO: styling for preview
-	var previewStyle = lipgloss.NewStyle().Width(previewWidth).Height(previewHeight).Padding(1, 1).
+	var previewStyle = lipgloss.NewStyle().Width(int(previewWidth)).Height(previewHeight).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("43"))
 
 		// TODO: styling for title
 	previewString := previewStyle.Render(m.selectedTitle + "\n" + m.filePreview)
 	listString := listStyle.Render(displayString)
-	allString := lipgloss.JoinHorizontal(lipgloss.Top, listString, previewString)
+	allString := lipgloss.JoinHorizontal(lipgloss.Bottom, listString, previewString)
 
 	return docStyle.Render(allString)
 }
